@@ -1,0 +1,14 @@
+{
+  "name": "chickening-alexa-lambda",
+  "version": "1.0.0",
+  "description": "Lambda function for Egg Tracker Alexa Skill",
+  "author": "Nathan Vander Wilt",
+  "license": "ISC",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "ask-sdk-core": "^2.1.0",
+    "ask-sdk-model": "^1.7.1",
+    "aws-sdk": "^2.344.0"
+  }
+}
