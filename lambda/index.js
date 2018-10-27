@@ -49,9 +49,19 @@ const ShowStatsIntentHandler = {
     return handlerInput.requestEnvelope.request.type === 'IntentRequest'
       && handlerInput.requestEnvelope.request.intent.name === 'ShowStats';
   },
-  handle(handlerInput) {
+  async handle(handlerInput) {
+    let userId = handlerInput.requestEnvelope.session.user.userId
+    let results = await documentClient.query({
+      TableName : DB_TABLE,
+      ConsistentRead: true,
+      KeyConditionExpression: 'userId = :user',
+      ExpressionAttributeValues: {
+        ':user': userId
+      }
+    }).promise()
+    console.log("Entries:", results.Items);
+    
     const speechText = 'Got history request';
-
     return handlerInput.responseBuilder
       .speak(speechText)
       .withSimpleCard('Show Stats', speechText)
