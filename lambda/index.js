@@ -2,6 +2,8 @@
 
 process.env.TZ = 'Etc/UTC';
 
+const DAY_LEN = 24*60*60*1e3;
+
 const crypto = require('crypto'),
       Alexa = require('ask-sdk-core'),
       AWS = require('aws-sdk'),
@@ -15,28 +17,45 @@ function md5(str) {
   return hash.digest('hex');
 }
 
+function pl(n, thing, things) {
+  if (!things) things = `${thing}s`;
+  return (n === 1) ? `one ${thing}` : `${n} ${things}`;
+}
+
 const LogEntryIntentHandler = {
   canHandle(handlerInput) {
     return handlerInput.requestEnvelope.request.type === 'IntentRequest'
       && handlerInput.requestEnvelope.request.intent.name === 'LogEntry';
   },
   async handle(handlerInput) {
-    let userId = handlerInput.requestEnvelope.session.user.userId
-    let entryTime = new Date().toISOString()
-    let value = +handlerInput.requestEnvelope.request.intent.slots.count.value
+    let d = handlerInput.requestEnvelope;
+    if (d.request.dialogState && d.request.dialogState !== 'COMPLETED') {
+      return handlerInput.responseBuilder
+        .addDelegateDirective(d.request.intent)
+        .getResponse();
+    } else if (d.request.intent.confirmationStatus === "DENIED") {
+      return handlerInput.responseBuilder
+        .speak("Okay, I won't record that. Standing by.")
+        .reprompt("Tell me how many eggs to record, or ask me to tell the egg count.")
+        .getResponse();
+    }
+    
+    let userId = d.session.user.userId;
+    let entryTime = new Date().toISOString();
+    let value = +d.request.intent.slots.count.value;
     
     // derive a unique id for this item (overkill! could almost index off userId+entryTime…)
-    let itemId = `${md5(userId).slice(0,8)}@${Date.now()}.${process.hrtime()[1]}`
+    let itemId = `${md5(userId).slice(0,8)}@${Date.now()}.${process.hrtime()[1]}`;
     
     // TODO: catch exception
     await documentClient.put({
       TableName : DB_TABLE,
       Item: {
-        itemId, userId, entryTime, entryType:'test', value
+        itemId, userId, entryTime, entryType:'collection', value
       }
-    }).promise()
+    }).promise();
     
-    const speechText = 'Got new entry';
+    const speechText = `Recorded ${pl(value,"egg")}.`;
     return handlerInput.responseBuilder
       .speak(speechText)
       .withSimpleCard('Log Entry', speechText)
@@ -50,7 +69,7 @@ const ShowStatsIntentHandler = {
       && handlerInput.requestEnvelope.request.intent.name === 'ShowStats';
   },
   async handle(handlerInput) {
-    let userId = handlerInput.requestEnvelope.session.user.userId
+    let userId = handlerInput.requestEnvelope.session.user.userId;
     let results = await documentClient.query({
       TableName : DB_TABLE,
       ConsistentRead: true,
@@ -58,10 +77,48 @@ const ShowStatsIntentHandler = {
       ExpressionAttributeValues: {
         ':user': userId
       }
-    }).promise()
-    console.log("Entries:", results.Items);
+    }).promise();
     
-    const speechText = 'Got history request';
+    let logs = results.Items
+      .filter(d => d.entryType === 'collection')
+      .sort((a,b) => (a.entryTime > b.entryTime) ? 1 : -1)
+      .map(d => {
+        let time = Date.parse(d.entryTime)
+        let count = d.value
+        return {time,count}
+      });
+    
+    let now = Date.now();
+    let cutoffs = {
+      d: now -  1 * DAY_LEN,
+      w: now -  7 * DAY_LEN,
+      m: now - 30 * DAY_LEN,
+      all: 0
+    };
+    
+    let tallies = logs.reduce((sums, d) => {
+      for (let [key,cut] of Object.entries(cutoffs)) {
+        if (d.time > cut) sums[key] += d.count;
+      }
+      return sums
+    }, {d:0,w:0,m:0,all:0});
+    
+    //console.log("Entries:", logs, tallies);
+    
+    let responses = [
+      `You've gathered ${pl(tallies.all,"egg")} total.`
+    ];
+    if (tallies.m < tallies.all) {
+      responses.push(`${tallies.m} in the last 30 days.`);
+    }
+    if (tallies.w < tallies.m) {
+      responses.push(`${tallies.w} in the last week.`);
+    }
+    if (tallies.d < tallies.w) {
+      responses.push(`${tallies.d} in the last 24 hours.`);
+    }
+    
+    const speechText = responses.join(' ');
     return handlerInput.responseBuilder
       .speak(speechText)
       .withSimpleCard('Show Stats', speechText)
@@ -74,7 +131,7 @@ const ErrorHandler = {
     return true;
   },
   handle(handlerInput, error) {
-    console.warn(`Error handled: ${error.message}`);
+    console.warn(`Error handled: ${error.message}`, error.stack);
     return handlerInput.responseBuilder
       .speak('Sorry, I can\'t understand the command. Please say again.')
       .reprompt('Sorry, I can\'t understand the command. Please say again.')
