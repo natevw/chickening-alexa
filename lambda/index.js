@@ -126,6 +126,37 @@ const ShowStatsIntentHandler = {
   }
 };
 
+const HelpIntentHandler = {
+  canHandle(handlerInput) {
+    return handlerInput.requestEnvelope.request.type === 'IntentRequest'
+      && handlerInput.requestEnvelope.request.intent.name === 'AMAZON.HelpIntent';
+  },
+  handle(handlerInput, error) {
+    return handlerInput.responseBuilder
+      .speak(
+        "This skill keeps a logbook of when you gathered home fresh eggs. " +
+        "Add entries each time you bring in more eggs, and I will add them up. " +
+        "For example, \"Tell My Egg Tracker that our hens laid 9 eggs!\" " +
+        "Or, you could say: \"Ask My Egg Tracker how many eggs have we gathered.\""
+      )
+      .reprompt("Try asking: \"How many eggs have we gathered?\"")
+      .getResponse();
+  }
+};
+
+const FallbackIntentHandler = {
+  canHandle(handlerInput) {
+    return handlerInput.requestEnvelope.request.type === 'IntentRequest'
+      && handlerInput.requestEnvelope.request.intent.name === 'AMAZON.FallbackIntent';
+  },
+  handle(handlerInput, error) {
+    return handlerInput.responseBuilder
+      .speak("Sorry, I didn't understand that.")
+      .reprompt("You can tell My Egg Tracker how many eggs you've collected.")
+      .getResponse();
+  }
+};
+
 const ErrorHandler = {
   canHandle() {
     return true;
@@ -133,8 +164,8 @@ const ErrorHandler = {
   handle(handlerInput, error) {
     console.warn(`Error handled: ${error.message}`, error.stack);
     return handlerInput.responseBuilder
-      .speak('Sorry, I can\'t understand the command. Please say again.')
-      .reprompt('Sorry, I can\'t understand the command. Please say again.')
+      .speak("Hmm, something went wrong. Please try that again.")
+      .reprompt("Sorry, I couldn't follow your last command. Please try again.")
       .getResponse();
   }
 };
@@ -142,7 +173,9 @@ const ErrorHandler = {
 exports.handler = Alexa.SkillBuilders.custom()
   .addRequestHandlers(
     LogEntryIntentHandler,
-    ShowStatsIntentHandler
+    ShowStatsIntentHandler,
+    HelpIntentHandler,
+    FallbackIntentHandler
   )
   .addErrorHandlers(
     ErrorHandler
